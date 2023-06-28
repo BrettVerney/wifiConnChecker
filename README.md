@@ -1,4 +1,4 @@
-# Wifi Connection Checker
+# wifiConnChecker
 
 PowerShell script used to check and log Wi-Fi connection information.
 
