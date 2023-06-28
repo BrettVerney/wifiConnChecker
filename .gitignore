@@ -1,0 +1,20 @@
+# Ignore .log files
+*.log
+
+# Ignore temp files, cache files, etc.
+*.tmp
+*.bak
+*~
+
+# Ignore system generated files
+Thumbs.db
+.DS_Store
+
+# Ignore Visual Studio Code settings
+.vscode
+
+# Ignore PowerShell metadata and backup files
+*.psm1
+*.psd1
+*.ps1xml
+*.ps1~
