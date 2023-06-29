@@ -48,7 +48,7 @@ This will allow scripts to be executed on your computer.
 
 The script should output something similar to the image below:
 
-![wifiConnChecker Example](https://github.com/BrettVerney/wifiConnChecker/blob/main/example.gif)
+![wifiConnChecker Example](https://github.com/BrettVerney/wifiConnChecker/blob/master/example.gif)
 
 ## Disclaimer
 
