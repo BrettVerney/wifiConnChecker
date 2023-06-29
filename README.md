@@ -11,7 +11,11 @@ This is a PowerShell script that retrieves and logs wireless connection informat
 
 ## Use Cases
 
-The Wifi Connection Checker script is a versatile tool with several practical use cases. It's particularly useful in environments where you have multiple access points and want to monitor which one a client roams to and at what time. By logging the BSSID, you can pinpoint exactly when and to which access point a client connects. The script is also a valuable tool for studying your wireless environment and gaining insight into the frequency bands and channels that are being used over time. With its ability to log the frequency and channel, you can observe trends, identify overcrowded channels, or spot any unusual activity. Furthermore, the signal strength logging can help you understand the coverage areas of your wireless setup and identify any potential weak spots. Whether you're a network administrator seeking to optimize your wireless network or a curious user looking to understand your wireless environment better, this script can provide valuable insights.
+The Wifi Connection Checker script is a versatile tool with several practical use cases. It's particularly useful in environments where you have multiple access points and want to monitor which one a client roams to and at what time. By logging the BSSID, you can pinpoint exactly when and to which access point a client connects. 
+
+The script is also a valuable tool for studying your wireless environment and gaining insight into the frequency bands and channels used over time. With its ability to log the frequency and channel, you can observe trends, identify overcrowded channels, or spot any unusual activity. Furthermore, the signal strength logging can help you understand the coverage areas of your wireless setup and identify any potential weak spots. 
+
+Whether you're a network administrator seeking to optimize your wireless network or a curious user looking to understand your wireless environment better, this script can provide valuable insights.
 
 
 ## Prerequisites
@@ -39,6 +43,12 @@ Note: If you see an error message like "File cannot be loaded because the execut
 `Set-ExecutionPolicy Bypass -Scope Process -Force`
 
 This will allow scripts to be executed on your computer.
+
+## Example
+
+The script should output something similar to the image below:
+
+![wifiConnChecker Example](https://github.com/BrettVerney/wifiConnChecker/blob/main/example.gif)
 
 ## Disclaimer
 
