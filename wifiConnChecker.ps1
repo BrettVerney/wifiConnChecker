@@ -1,111 +1,103 @@
 <#
 .SYNOPSIS
-    This script retrieves and logs wireless connection information at regular intervals.
+    Simple Wi-Fi logger (SSID, BSSID, channel, MHz, RSSI dBm) using netsh.
 
 .DESCRIPTION
-    The script retrieves wireless connection information including SSID, BSSID, channel, frequency, and signal strength every second.
-    If the network is not yet identified or if there is no current connection, this is also logged. The results are written to a .log file located in the directory that the script was run from.
-
+    - Calls `netsh wlan show interfaces` once per interval (no fancy parsing beyond what we need).
+    - Writes timestamped lines with SSID, BSSID, channel, frequency (MHz), and RSSI (dBm).
+    - Stops after IterationLimit, or runs until Ctrl+C when IterationLimit = 0.
 
 .USAGE
-    .\WifiConnCheck.ps1
-
+    .\wifiConnChecker.ps1 [-IterationLimit 0] [-IntervalSeconds 1]
 
 .NOTES
-    File Name  : WifiConnCheck.ps1
-    Author     : Brett Verney (@WiFiWizardOfOz)
-    Date       : June 28, 2023
-    Version    : 1.0
-    Prerequisite: Windows 10 (Admin rights required)
-
-.LINK
-    Blog: wifiwizardofoz.com
-    GitHub: github.com/BrettVerney
+    File Name   : wifiConnChecker.ps1
+    Author      : Brett Verney (@WiFiWizardOfOz)
+    Version     : 3.0
 #>
 
-
+param(
+    [int]$IterationLimit = 0,  # 0 = run until stopped
+    [int]$IntervalSeconds = 1
+)
 
 function Log($message) {
-    Add-Content $logFilePath $message
+    Add-Content $script:LogFilePath $message
     Write-Output $message
 }
 
-function GetWirelessInfo {
-    try {
-        $netshOutput = netsh wlan show interfaces refresh
-    }
-    catch {
-        Log "Error when trying to refresh wireless interface information: $_"
-        return @("", "", "", "", "")
-    }
-
-    # Retrieve the BSSID information using the Netsh command
-    $bssidRegexPattern = 'BSSID\s+:\s+(\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b)'
-    $bssidMatches = $netshOutput | Select-String -Pattern $bssidRegexPattern
-    $bssid = $bssidMatches.Matches.Groups[1].Value
-
-    # Retrieve the SSID information using the Netsh command
-    $ssidRegexPattern = 'SSID\s+:\s+(?!.*BSSID)(.*)'
-    $ssidMatches = $netshOutput | Select-String -Pattern $ssidRegexPattern
-    $ssid = ($ssidMatches.Matches[0].Value -replace 'SSID\s+:\s+', '').Trim()
-
-    # Retrieve the channel information using the Netsh command
-    $channelRegexPattern = 'Channel\s+:\s+(\d+)'
-    $channelMatches = $netshOutput | Select-String -Pattern $channelRegexPattern
-    $channel = $channelMatches.Matches.Value -replace 'Channel\s+:\s+', ''
-
-    # Calculate the frequency based on the channel
-    $frequency = "Unknown"
-    if ($channel -match "^([0-9]+)$") {
-        $frequency = switch ($channel) {
-            {$_ -in 1..14}   {2407 + ($_-1)*5}
-            {$_ -in 36, 40, 44, 48, 149, 153, 157, 161} {5170 + ($_-36)*5}
-            {$_ -in 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144} {5250 + ($_-52)*5}
-            default {"Unknown"}
-        }
-    } 
-
-    # Retrieve the signal information using the Netsh command
-    $signalRegexPattern = 'Signal\s+:\s+([0-9]+)%'
-    $signalMatches = $netshOutput | Select-String -Pattern $signalRegexPattern
-    $signal = $signalMatches.Matches.Groups[1].Value
-    $rssi = "{0:F1}" -f (($signal / 2) - 100)
-
-    # Return the result as an array of five elements
-    return @($ssid, $bssid, $channel, $frequency, $rssi)
+function Get-FrequencyMHz($channel) {
+    $parsed = 0
+    if (-not [int]::TryParse($channel, [ref]$parsed)) { return "Unknown" }
+    if ($parsed -ge 1 -and $parsed -le 14) { return 2407 + ($parsed - 1) * 5 }   # 2.4 GHz
+    if ($parsed -ge 32 -and $parsed -le 177) { return 5000 + $parsed * 5 }       # 5 GHz
+    if ($parsed -ge 1 -and $parsed -le 233) { return 5950 + ($parsed - 1) * 5 }  # 6 GHz (basic)
+    return "Unknown"
 }
 
-# Set a limit on the number of iterations
-$iterationLimit = 1000
+function Get-WirelessInfo {
+    $netshOutput = netsh wlan show interfaces 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
 
-# Set the log file path
-$logFileName = "WifiConnCheck_$(Get-Date -Format 'yyyy-MM-dd').log"
-$logFilePath = Join-Path $PWD.Path $logFileName
+    $ssidRegex = '^\s*SSID\s+:\s+(?!.*BSSID)(.+)$'
+    $bssidRegex = '^\s*BSSID\s+:\s+(\b([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b)'
+    $channelRegex = '^\s*Channel\s+:\s+(\d+)'
+    $signalRegex = '^\s*Signal\s+:\s+(\d+)%'
 
-Log "`n==================================================== Script Executed @ $(Get-Date -Format 'hh:mm:ss tt') ====================================================`n"
+    $ssidMatch = $netshOutput | Select-String -Pattern $ssidRegex | Select-Object -First 1
+    $bssidMatch = $netshOutput | Select-String -Pattern $bssidRegex | Select-Object -First 1
+    $channelMatch = $netshOutput | Select-String -Pattern $channelRegex | Select-Object -First 1
+    $signalMatch = $netshOutput | Select-String -Pattern $signalRegex | Select-Object -First 1
 
-for ($i = 1; $i -le $iterationLimit; $i++) {
-    $connectionProfile = Get-NetConnectionProfile
-    $connectionProfileName = $connectionProfile.Name
+    if (-not $ssidMatch -or -not $bssidMatch -or -not $channelMatch -or -not $signalMatch) {
+        return $null
+    }
+
+    $ssid = $ssidMatch.Matches[0].Groups[1].Value.Trim()
+    $bssid = $bssidMatch.Matches[0].Groups[1].Value.Trim()
+    $channel = $channelMatch.Matches[0].Groups[1].Value.Trim()
+    $signal = $signalMatch.Matches[0].Groups[1].Value.Trim()
+
+    $freq = Get-FrequencyMHz $channel
+    $rssiDbm = (($signal / 2) - 100)
+
+    [pscustomobject]@{
+        Ssid      = $ssid
+        Bssid     = $bssid
+        Channel   = $channel
+        Frequency = $freq
+        RssiDbm   = $rssiDbm
+        SignalPct = [int]$signal
+        Band      = if ($freq -is [int] -or $freq -is [double]) {
+            if ($freq -ge 5955) { "6 GHz" }
+            elseif ($freq -ge 5000) { "5 GHz" }
+            elseif ($freq -ge 2400) { "2.4 GHz" }
+            else { "Unknown band" }
+        } else { "Unknown band" }
+    }
+}
+
+$logFileName = "WifiConnCheck_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
+$script:LogFilePath = Join-Path $PWD.Path $logFileName
+
+Log "`n==================== Wi-Fi Logger started @ $(Get-Date -Format 'yyyy-MM-dd hh:mm:ss tt') ====================`n"
+
+$iteration = 0
+while ($IterationLimit -le 0 -or $iteration -lt $IterationLimit) {
+    $iteration++
     $timestamp = Get-Date -Format "ddd MMM dd yyyy hh:mm:ss tt"
 
-    if ($connectionProfileName -eq "Identifying...") {
-        Log "Identifying Network at $timestamp"
-    }
-    elseif ($null -ne $connectionProfileName) {
-        $ssid, $bssid, $channel, $frequency, $rssi = GetWirelessInfo
-        if ($ssid -eq "" -and $bssid -eq "" -and $channel -eq "" -and $frequency -eq "" -and $rssi -eq "") {
-        # An error occurred when trying to get wireless info.
-        Log "Skipping this iteration due to an error."
-        Start-Sleep -Seconds 1
-        continue
-}
-        Log "Connected to network '$ssid' ($bssid) | Channel is $channel ($frequency MHz) | Signal strength is $rssi dBm | $timestamp"
-    }
-    else {
-        Log "Wi-Fi adapter is not connected to a Network at $timestamp"
+    $info = Get-WirelessInfo
+    if (-not $info) {
+        Log "[$timestamp] No Wi-Fi connection detected."
+    } else {
+        $rssiRounded = "{0:F1}" -f $info.RssiDbm
+        Log "[$timestamp] Connected via $($info.Bssid) to Network '$($info.Ssid)' | $($info.Band) (ch $($info.Channel) - $($info.Frequency) MHz) | RSSI $rssiRounded dBm"
     }
 
-    # Wait for 1 second before looping again
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds $IntervalSeconds
 }
+
+Log "`n==================== Wi-Fi Logger stopped @ $(Get-Date -Format 'yyyy-MM-dd hh:mm:ss tt') ====================`n"
